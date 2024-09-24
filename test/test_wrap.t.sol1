@@ -3,8 +3,6 @@ pragma solidity ^0.8.0;
 import "forge-std/Test.sol";
 import {console} from "forge-std/console.sol";
 
-import {Address} from "@openzeppelin/contracts/utils/Address.sol";
-
 import {FoundyWrap} from "../contracts/foundy_wrap.sol";
 import {WrapperUsersV1Batch} from "../contracts/WrapperUsersV1Batch.sol";
 import {ETypes} from "../contracts/LibEnvelopTypes.sol";
@@ -17,19 +15,13 @@ contract FoundyWrapTest is Test {
         0x0000000000000000000000000000000000000000;
 
     MockUsersSBTCollection721 public users_behind_proxy;
-    MockUsersSBTCollectionRegistry public users_registry;
+    MockEventManager public users_registry;
     // MockEventManager public event_manager;
     WrapperUsersV1Batch public wrapper_users_v1_batch;
     FoundyWrap public wrapper;
 
     function setUp() public {
-        users_registry = new MockUsersSBTCollectionRegistry();
-        users_registry.addImplementation(
-            MockUsersSBTCollectionRegistry.Asset(
-                MockUsersSBTCollectionRegistry.AssetType.EMPTY,
-                ZERO_ADDRESS
-            )
-        );
+        users_registry = new MockEventManager();
         wrapper_users_v1_batch = new WrapperUsersV1Batch(
             address(users_registry)
         );
@@ -42,44 +34,57 @@ contract FoundyWrapTest is Test {
             address(wrapper_users_v1_batch)
         );
 
-        // event_manager = new MockEventManager();
-        wrapper = new FoundyWrap(
-            address(wrapper_users_v1_batch),
-            address(users_behind_proxy),
-            address(users_registry)
+        users_registry.addImplementation(
+            MockUsersSBTCollectionRegistry.Asset(
+                MockUsersSBTCollectionRegistry.AssetType.ERC721,
+                address(users_behind_proxy)
+            )
         );
+
+        // event_manager = new MockEventManager();
     }
 
     function test_wrap() public {
-        address collection_address = wrapper.deployNewCollection(
+        address collection_address = users_registry.deployNewCollection(
+            address(users_behind_proxy),
+            address(this),
             "test",
-            "test"
+            "TEST",
+            "https://api.envelop.is/metadata",
+            address(wrapper_users_v1_batch)
         );
 
-        MockUsersSBTCollectionRegistry.Asset[] memory a = users_registry
-            .getUsersCollections(address(wrapper));
+        MockEventManager.Asset[] memory a = users_registry
+            .getUsersCollections(address(this));
 
         console.log(a[0].contractAddress);
-        wrapper.wrap(a[0].contractAddress);
+        // wrapper.wrap(a[0].contractAddress);
 
-        // ETypes.AssetItem memory _originalNft = ETypes.AssetItem(
-        //     ETypes.Asset(ETypes.AssetType.EMPTY, ZERO_ADDRESS),
-        //     0,
-        //     0
-        // );
+        ETypes.AssetItem memory _originalNft = ETypes.AssetItem(
+            ETypes.Asset(ETypes.AssetType.EMPTY, ZERO_ADDRESS),
+            0,
+            0
+        );
 
-        // ETypes.INData memory _inData = ETypes.INData(
-        //     _originalNft,
-        //     ZERO_ADDRESS,
-        //     new ETypes.Fee[](0),
-        //     new ETypes.Lock[](0),
-        //     new ETypes.Royalty[](0),
-        //     ETypes.AssetType.ERC721,
-        //     uint256(3),
-        //     0x0000
-        // );
+        ETypes.INData memory _inData = ETypes.INData(
+            _originalNft,
+            ZERO_ADDRESS,
+            new ETypes.Fee[](0),
+            new ETypes.Lock[](0),
+            new ETypes.Royalty[](0),
+            ETypes.AssetType.ERC721,
+            uint256(0),
+            bytes2(0x0000)
+        );
 
-        // ETypes.AssetItem[] memory _collateral = new ETypes.AssetItem[](0);
+        ETypes.AssetItem[] memory _collateral = new ETypes.AssetItem[](0);
+
+        wrapper_users_v1_batch.wrapIn(
+            _inData,
+            _collateral,
+            address(this),
+            a[0].contractAddress
+        );
 
         // bytes memory _data = abi.encodeWithSignature(
         //     "wrapIn(INData,AssetItem[],address,address)",
@@ -87,11 +92,15 @@ contract FoundyWrapTest is Test {
         //     // [AssetItem(Asset(AssetType.ERC20, USDT), 0, 10000)],
         //     _collateral,
         //     address(this),
-        //     collection_address
+        //     a[0].contractAddress
         // );
 
         // abi.decode(
-        //     Address.functionCallWithValue(address(wrapper_users_v1_batch), _data, 0),
+        //     Address.functionCallWithValue(
+        //         address(wrapper_users_v1_batch),
+        //         _data,
+        //         0
+        //     ),
         //     (ETypes.AssetItem)
         // );
     }

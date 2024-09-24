@@ -99,6 +99,10 @@ contract MockUsersSBTCollection721 is ERC721Enumerable {
         return _exists(_tokenId);
     }
 
+
+    function setCreator(address _creator) public {
+        creator = _creator;
+    } 
     
 
     /**

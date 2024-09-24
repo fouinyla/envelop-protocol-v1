@@ -2,9 +2,13 @@
 pragma solidity 0.8.21;
 
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
-import {ETypes} from "../contracts/LibEnvelopTypes.sol";
 
-contract FoundyWrap {
+import {ETypes} from "../contracts/LibEnvelopTypes.sol";
+import "../interfaces/IWrapperUsers.sol";
+import "../interfaces/IERC20Extended.sol";
+import "./TokenService.sol";
+
+contract FoundyWrap is TokenService {
     // enum AssetType {
     //     EMPTY,
     //     NATIVE,
@@ -59,6 +63,8 @@ contract FoundyWrap {
     address public IMPL_ADDRESS;
     address public EVENT_MANAGER_CONTRACT;
 
+    address public WRAPPER;
+
     uint8 public constant OUT_TYPE = 3;
 
     address public owner;
@@ -66,12 +72,14 @@ contract FoundyWrap {
     constructor(
         address wrapper_users_v1_batch,
         address impl_address,
-        address event_manager_contract
+        address event_manager_contract,
+        address wrapper
     ) {
         owner = msg.sender;
         WRAPPER_USERS_V1_BATCH = wrapper_users_v1_batch;
         IMPL_ADDRESS = impl_address;
         EVENT_MANAGER_CONTRACT = event_manager_contract;
+        WRAPPER = wrapper;
     }
 
     modifier onlyOwner() {
@@ -111,7 +119,7 @@ contract FoundyWrap {
             name,
             symbol,
             "https://api.envelop.is/metadata",
-            WRAPPER_USERS_V1_BATCH
+            WRAPPER
         );
 
         return
@@ -126,8 +134,9 @@ contract FoundyWrap {
     }
 
     function wrap(
-        address collection_address
-    ) public onlyOwner returns (ETypes.AssetItem memory) {
+        address collection_address,
+        ETypes.AssetItem memory item
+    ) public onlyOwner payable returns (ETypes.AssetItem memory) {
         // approve usdt token
         // IERC20(USDT).approve(WRAPPER_USERS_V1_BATCH, 10000);
 
@@ -146,24 +155,38 @@ contract FoundyWrap {
             new ETypes.Royalty[](0),
             ETypes.AssetType.ERC721,
             uint256(0),
-            0x0000
+            bytes2(0x0000)
         );
 
-        ETypes.AssetItem[] memory _collateral = new ETypes.AssetItem[](0);
+        ETypes.AssetItem[] memory _collateral = new ETypes.AssetItem[](1);
+        _collateral[0] = item;
 
-        bytes memory _data = abi.encodeWithSignature(
-            "wrapIn(INData,AssetItem[],address,address)",
-            _inData,
-            // [AssetItem(Asset(AssetType.ERC20, USDT), 0, 10000)],
-            _collateral,
-            address(this),
-            collection_address
+        _transferSafe(_collateral[0], msg.sender, address(this));
+        IERC20Extended(item.asset.contractAddress).approve(
+            WRAPPER,
+            item.amount
         );
 
+        // bytes memory _data = abi.encodeWithSignature(
+        //     "wrapIn(ETypes.INData,ETypes.AssetItem[],address,address)",
+        //     _inData,
+        //     // [AssetItem(Asset(AssetType.ERC20, USDT), 0, 10000)],
+        //     _collateral,
+        //     address(this),
+        //     collection_address
+        // );
         return
-            abi.decode(
-                Address.functionCallWithValue(WRAPPER_USERS_V1_BATCH, _data, 0),
-                (ETypes.AssetItem)
+            IWrapperUsers(WRAPPER).wrapIn{value: msg.value}(
+                _inData,
+                _collateral,
+                address(this),
+                collection_address
             );
+
+        // return
+        //     abi.decode(
+        //         Address.functionCallWithValue(WRAPPER_USERS_V1_BATCH, _data, 0),
+        //         (ETypes.AssetItem)
+        //     );
     }
 }
